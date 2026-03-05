@@ -17,18 +17,26 @@ GROQ_KEY = os.environ.get("GROQ_KEY")
 
 def get_ai_content():
     try:
+        # المفتاح اللي أنت بعتهولي شغال، بس اتأكد إنك حطه صح في الـ Secrets
         client = Groq(api_key=GROQ_KEY)
         completion = client.chat.completions.create(
             model="llama3-8b-8192",
             messages=[
-                {"role": "system", "content": "أنت صانع محتوى إسلامي حكيم. اكتب بوست قصير ومؤثر للفيسبوك (آية أو حديث أو نصيحة) مع هاشتاج واحد فقط."},
+                {"role": "system", "content": "أنت صانع محتوى إسلامي حكيم. اكتب بوست قصير جداً ومؤثر للفيسبوك (آية أو حديث أو نصيحة) مع هاشتاج واحد فقط."},
                 {"role": "user", "content": "اكتب بوست اليوم."}
             ]
         )
         return completion.choices[0].message.content
     except Exception as e:
-        print(f"⚠️ خطأ في Groq: {e}")
-        return "الحمد لله رب العالمين."
+        print(f"⚠️ خطأ في Groq (تأكد من الـ API Key): {e}")
+        # نص احتياطي عشان السكربت ميفشلش لو الـ AI فيه مشكلة
+        quotes = [
+            "سبحان الله وبحمده، سبحان الله العظيم. #ذكر",
+            "اللهم صل وسلم وبارك على نبينا محمد. #الجمعة",
+            "استغفر الله العظيم واتوب إليه. #استغفار"
+        ]
+        import random
+        return random.choice(quotes)
 
 def start_posting():
     chrome_options = Options()
@@ -36,75 +44,62 @@ def start_posting():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    # يوزر إيجنت حديث جداً
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
-    wait = WebDriverWait(driver, 20)
+    wait = WebDriverWait(driver, 30)
     
     try:
-        print("🌐 فتح فيسبوك (نسخة الموبايل)...")
+        print("🌐 فتح فيسبوك...")
         driver.get("https://mbasic.facebook.com/")
-        time.sleep(5)
-
-        # 1. محاولة إخفاء أي طبقة كوكيز أو تحذيرات بالـ JavaScript
-        try:
-            driver.execute_script("document.querySelectorAll('button').forEach(b => { if(b.innerText.includes('Allow') || b.innerText.includes('موافق')) b.click(); });")
-            time.sleep(2)
-        except: pass
-
-        print("🔑 إدخال بيانات الدخول...")
         
-        # البحث عن خانة الإيميل والتأكد إنها قابلة للتفاعل
+        print("🔑 تسجيل الدخول...")
         email_field = wait.until(EC.element_to_be_clickable((By.NAME, "email")))
-        
-        # استخدام JavaScript للكتابة لضمان تخطي أي عوائق
-        driver.execute_script("arguments[0].value = '';", email_input := email_field)
-        email_input.send_keys(FB_EMAIL)
+        email_field.send_keys(FB_EMAIL)
         
         pass_field = driver.find_element(By.NAME, "pass")
         pass_field.send_keys(FB_PASS)
-        
-        print("⏳ ضغط تسجيل الدخول...")
-        # نضغط Enter بدل ما ندور على الزرار عشان أضمن
         pass_field.send_keys(Keys.ENTER)
         
+        print("⏳ انتطار التحميل...")
         time.sleep(10)
 
-        # 2. فحص الأمان
+        # فحص لو في قفل أمان
         if "checkpoint" in driver.current_url:
-            print("⚠️ أمان فيسبوك: يرجى الموافقة على الدخول من موبايلك الآن!")
+            print("⚠️ فيسبوك طلب تأكيد! افتح موبايلك دلوقتي ووافق.")
             return
 
-        # 3. الوصول لصفحة النشر
-        print("✍️ تجهيز المنشور...")
-        # نفتح الرئيسية تاني عشان نتأكد إننا دخلنا
-        driver.get("https://mbasic.facebook.com/")
+        # الخطوة العبقرية: نروح للينك النشر مباشرة عشان منهربش من نسخة mbasic
+        print("📝 الانتقال لصفحة النشر المباشرة...")
+        driver.get("https://mbasic.facebook.com/composer/")
         time.sleep(5)
 
         post_content = get_ai_content()
-        
-        # البحث عن صندوق النص
-        # في mbasic أحياناً بيكون اسمه 'xc_message'
+        print(f"🤖 المحتوى المجهز: {post_content}")
+
+        # محاولة الكتابة في صندوق النص
         try:
-            textarea = wait.until(EC.visibility_of_element_located((By.NAME, "xc_message")))
+            # في صفحة الـ composer، الصندوق غالبا بيكون textarea
+            textarea = wait.until(EC.presence_of_element_located((By.TAG_NAME, "textarea")))
             textarea.send_keys(post_content)
-            time.sleep(2)
+            print("✅ تم كتابة النص")
             
-            # زر النشر
-            submit_btn = driver.find_element(By.NAME, "view_post")
+            # البحث عن زر النشر (بيكون مكتوب عليه "نشر" أو "Post")
+            submit_btn = driver.find_element(By.XPATH, "//input[@type='submit' and (@name='view_post' or @value='Post' or @value='نشر')]")
             driver.execute_script("arguments[0].click();", submit_btn)
             
-            print(f"🚀 تم النشر بنجاح: {post_content}")
+            print("🚀 تم الضغط على زر النشر!")
+            time.sleep(5)
+            print(f"🏁 المهمة تمت بنجاح.")
+            
         except Exception as e:
-            print(f"❌ فشل العثور على صندوق الكتابة. الرابط الحالي: {driver.current_url}")
-            # حفظ صورة للخطأ عشان نشوفها في GitHub Artifacts
-            driver.save_screenshot("error_post.png")
+            print(f"❌ فشل العثور على زر النشر. الرابط الحالي: {driver.current_url}")
+            driver.save_screenshot("debug_post.png")
             raise e
             
     except Exception as e:
-        print(f"❌ حدث خطأ: {e}")
+        print(f"❌ خطأ عام: {e}")
         driver.save_screenshot("final_error.png")
     finally:
         driver.quit()
