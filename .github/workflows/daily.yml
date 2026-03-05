@@ -1,0 +1,35 @@
+name: Facebook Daily Post
+
+on:
+  schedule:
+    # سيعمل كل يوم الساعة 6 صباحاً بتوقيت مصر (4:00 UTC)
+    - cron: '0 4 * * *'
+  workflow_dispatch: # زر للتشغيل اليدوي للتجربة
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Script
+        env:
+          FB_EMAIL: ${{ secrets.FB_EMAIL }}
+          FB_PASS: ${{ secrets.FB_PASS }}
+          GROQ_KEY: ${{ secrets.GROQ_KEY }}
+        run: python main.py
