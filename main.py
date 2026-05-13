@@ -1,12 +1,9 @@
-import os, requests, random, json, base64, sys, glob
+import os, requests, random, sys, glob
 from datetime import datetime
 import numpy as np
 import moviepy.editor as mp
 from moviepy.video.fx.all import loop 
 from PIL import Image, ImageFont, ImageDraw
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 
 # ================== إعدادات الأبعاد ==================
 WIDTH = 1080
@@ -50,20 +47,15 @@ def safe_wrap(text, width):
     if current_line: lines.append(" ".join(current_line))
     return lines
 
-def youtube_authenticate():
-    TOKEN_B64 = os.environ.get("TOKEN_BASE64")
-    token_data = json.loads(base64.b64decode(TOKEN_B64).decode('utf-8'))
-    creds = Credentials.from_authorized_user_info(token_data)
-    return build('youtube', 'v3', credentials=creds)
-
 def facebook_upload(video_path, description):
     print("📡 جاري الرفع لصفحة فيسبوك (Reels)...")
     PAGE_ID = os.environ.get("FB_PAGE_ID")
     ACCESS_TOKEN = os.environ.get("FB_ACCESS_TOKEN")
     
     if not PAGE_ID or not ACCESS_TOKEN:
-        raise Exception("❌ مفاتيح فيسبوك غير متوفرة!")
+        raise Exception("❌ مفاتيح فيسبوك غير متوفرة في Secrets!")
 
+    # 1. تسجيل الفيديو (Initialize)
     url_init = f"https://graph.facebook.com/v19.0/{PAGE_ID}/video_reels"
     params_init = {'upload_phase': 'start', 'access_token': ACCESS_TOKEN}
     res_init = requests.post(url_init, data=params_init).json()
@@ -74,11 +66,13 @@ def facebook_upload(video_path, description):
     
     video_id = res_init['video_id']
 
+    # 2. رفع الملف (Upload)
     url_upload = f"https://graph.facebook.com/v19.0/{video_id}"
     files = {'video_file_chunk': open(video_path, 'rb')}
     params_upload = {'upload_phase': 'upload', 'access_token': ACCESS_TOKEN, 'start_offset': '0'}
     res_upload = requests.post(url_upload, params=params_upload, files=files).json()
 
+    # 3. النشر النهائي (Finish)
     params_publish = {
         'upload_phase': 'finish',
         'video_id': video_id,
@@ -188,21 +182,15 @@ def build_shorts_video():
     ayah_range_str = f"{start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"{start_ayah}"
     reciter_names = {'ar.alafasy': 'مشاري العفاسي', 'ar.husary': 'محمود خليل الحصري', 'ar.minshawi': 'محمد صديق المنشاوي'}
     current_reciter = reciter_names.get(AUDIO_EDITION, "الشيخ")
-    v_title = f"تلاوة خاشعة تريح القلب 🤍 {s_name} (آية {ayah_range_str}) #shorts #quran"
-    v_desc = f"تلاوة من سورة {s_name} بصوت الشيخ {current_reciter}.\n\n#قرآن #تلاوة #quran #راحة_نفسية"
+    v_title = f"تلاوة خاشعة تريح القلب 🤍 {s_name} (آية {ayah_range_str}) #quran #reels"
+    v_desc = f"تلاوة من سورة {s_name} بصوت الشيخ {current_reciter}.\n\n#قرآن #تلاوة #راحة_نفسية"
 
-    # الرفع
-    try:
-        youtube = youtube_authenticate()
-        body = {'snippet': {'title': v_title, 'description': v_desc, 'categoryId': '22'}, 'status': {'privacyStatus': 'public'}}
-        youtube.videos().insert(part="snippet,status", body=body, media_body=MediaFileUpload("final.mp4", chunksize=-1, resumable=True)).execute()
-        print("✅ يوتيوب تم")
-    except Exception as e: print(f"⚠️ يوتيوب فشل: {e}")
-
+    # الرفع لفيسبوك فقط
     try:
         facebook_upload("final.mp4", f"{v_title}\n\n{v_desc}")
-        print("✅ فيسبوك تم")
-    except Exception as e: print(f"⚠️ فيسبوك فشل: {e}"); raise e
+    except Exception as e: 
+        print(f"⚠️ فيسبوك فشل: {e}")
+        raise e
 
 if __name__ == "__main__":
     if not is_uploaded_today() or os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
@@ -211,4 +199,4 @@ if __name__ == "__main__":
             mark_uploaded_today()
         except Exception as e:
             print("🔥 خطأ:", e); sys.exit(1)
-        
+    
