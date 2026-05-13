@@ -49,20 +49,14 @@ def facebook_upload(video_path, description):
     if not PAGE_ID or not ACCESS_TOKEN:
         raise Exception("❌ مفاتيح فيسبوك غير متوفرة!")
 
-    # الرفع المباشر كفيديو (فيسبوك بيحوله Reel تلقائياً لو طولي)
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/videos"
-    
-    payload = {
-        'description': description,
-        'access_token': ACCESS_TOKEN
-    }
+    payload = {'description': description, 'access_token': ACCESS_TOKEN}
     
     try:
         with open(video_path, 'rb') as f:
             files = {'source': f}
             response = requests.post(url, data=payload, files=files)
             res = response.json()
-            
         if 'id' in res:
             print(f"✅ تم الرفع للفيسبوك بنجاح! ID: {res['id']}")
         else:
@@ -101,7 +95,6 @@ def fetch_quran_chunk():
             else:
                 audio_clips.append(clip); text_parts_ar.append(ar_text)
                 text_parts_en.append(a_en['text']); current_duration += clip.duration
-                
         if audio_clips:
             return audio_clips, text_parts_ar, text_parts_en, current_duration, s_name, start_idx + 1, start_idx + len(audio_clips)
 
@@ -115,9 +108,20 @@ def build_shorts_video():
 
     print("🎬 [2/4] اختيار خلفية...")
     PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
-    query = random.choice(['nature clouds', 'starry sky', 'mountain landscape', 'ocean aerial'])
-    v_res = requests.get(f'https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=20', headers={'Authorization': PEXELS_API_KEY}).json()
-    v_url = random.choice([v for v in v_res.get('videos', []) if v.get('duration', 0) >= dur])['video_files'][0]['link']
+    query = random.choice(['nature clouds', 'starry sky', 'mountain landscape', 'ocean aerial', 'desert nature'])
+    
+    # تحسين منطق جلب الفيديو لتجنب خطأ الـ index
+    v_res = requests.get(f'https://api.pexels.com/videos/search?query={query}&orientation=portrait&per_page=30', headers={'Authorization': PEXELS_API_KEY}).json()
+    videos = v_res.get('videos', [])
+    
+    if not videos:
+        raise Exception(f"لم يتم العثور على أي فيديوهات للبحث: {query}")
+
+    # محاولة إيجاد فيديو أطول من الصوت، ولو مفيش ناخد أطول واحد متاح
+    valid_videos = [v for v in videos if v.get('duration', 0) >= dur]
+    selected_video = random.choice(valid_videos) if valid_videos else max(videos, key=lambda x: x.get('duration', 0))
+    
+    v_url = selected_video['video_files'][0]['link']
     with open("bg_v.mp4", "wb") as f: f.write(requests.get(v_url).content)
     
     print("⚙️ [3/4] المونتاج...")
@@ -136,7 +140,6 @@ def build_shorts_video():
         ar_lines = safe_wrap(text_parts_ar[i], width=35 if count < 60 else 45)
         en_lines = safe_wrap(text_parts_en[i], width=40)
         y_off = 600
-        
         for line in ar_lines:
             d.text((WIDTH/2, y_off), line, font=ImageFont.truetype(FONT_PATH_AR, f_size), fill="white", anchor="mm", stroke_width=4, stroke_fill="black", direction="rtl")
             y_off += f_size + 30
@@ -154,15 +157,12 @@ def build_shorts_video():
     print("⏳ [4/4] رندر...")
     final.write_videofile("final.mp4", fps=24, codec="libx264", audio_codec="aac", bitrate="8000k", preset="ultrafast", logger=None, threads=4)
 
-    # تنظيف
     for f in glob.glob("temp_*.mp3"): os.remove(f)
     if os.path.exists("bg_v.mp4"): os.remove("bg_v.mp4")
 
-    # نصوص الرفع والرفع
     ayah_range = f"{start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"{start_ayah}"
     reciter = {'ar.alafasy': 'مشاري العفاسي', 'ar.husary': 'الحصري', 'ar.minshawi': 'المنشاوي'}.get(AUDIO_EDITION, "الشيخ")
     caption = f"تلاوة خاشعة من سورة {s_name} (آية {ayah_range}) بصوت الشيخ {reciter} 🤍 #قرآن #reels #quran"
-
     facebook_upload("final.mp4", caption)
 
 if __name__ == "__main__":
@@ -172,4 +172,4 @@ if __name__ == "__main__":
             mark_uploaded_today()
         except Exception as e:
             print("🔥 خطأ:", e); sys.exit(1)
-                
+    
