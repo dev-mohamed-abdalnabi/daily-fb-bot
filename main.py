@@ -81,7 +81,7 @@ def facebook_upload(video_path, description):
     params_upload = {'upload_phase': 'upload', 'access_token': ACCESS_TOKEN, 'start_offset': '0'}
     res_upload = requests.post(url_upload, params=params_upload, files=files).json()
 
-    # 3. النشر النهائي (Publish)
+    # 3. النشر النهائي (Finish)
     params_publish = {
         'upload_phase': 'finish',
         'video_id': video_id,
@@ -236,9 +236,40 @@ def build_shorts_video():
     if os.path.exists("bg_v.mp4"): os.remove("bg_v.mp4")
 
     # إعداد نصوص الرفع
-    ayah_range_str = f"الآيات {start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"آية {start_ayah}"
+    ayah_range_str = f"{start_ayah}-{end_ayah}" if start_ayah != end_ayah else f"{start_ayah}"
     reciter_names = {'ar.alafasy': 'مشاري العفاسي', 'ar.husary': 'محمود خليل الحصري', 'ar.minshawi': 'محمد صديق المنشاوي'}
     current_reciter = reciter_names.get(AUDIO_EDITION, "الشيخ")
+
+    v_title = f"تلاوة خاشعة تريح القلب 🤍 {s_name} (آية {ayah_range_str}) #shorts #quran"
+    v_desc = f"تلاوة من سورة {s_name} بصوت الشيخ {current_reciter}.\n\n#قرآن #تلاوة #quran #راحة_نفسية"
+
+    # الرفع لليوتيوب
+    try:
+        print("📡 الرفع لليوتيوب...")
+        youtube = youtube_authenticate()
+        body = {'snippet': {'title': v_title, 'description': v_desc, 'categoryId': '22'}, 'status': {'privacyStatus': 'public'}}
+        youtube.videos().insert(part="snippet,status", body=body, media_body=MediaFileUpload("final.mp4", chunksize=-1, resumable=True)).execute()
+        print("✅ تم الرفع لليوتيوب!")
+    except Exception as e:
+        print(f"⚠️ فشل يوتيوب: {e}")
+
+    # الرفع لفيسبوك
+    try:
+        facebook_upload("final.mp4", f"{v_title}\n\n{v_desc}")
+    except Exception as e:
+        print(f"⚠️ فشل فيسبوك: {e}")
+        raise e
+    
+    print(f"✅ اكتملت العملية بنجاح! (المدة: {dur:.1f} ثانية)")
+
+if __name__ == "__main__":
+    if not is_uploaded_today() or os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
+        try:
+            build_shorts_video()
+            mark_uploaded_today()
+        except Exception as e:
+            print("🔥 خطأ:", e); sys.exit(1)
+ current_reciter = reciter_names.get(AUDIO_EDITION, "الشيخ")
 
     v_title = f"تلاوة خاشعة تريح القلب 🤍 {s_name} ({ayah_range_str}) #shorts #quran"
     v_desc = f"تلاوة من سورة {s_name} بصوت الشيخ {current_reciter}.\n\n#قرآن #تلاوة #quran #راحة_نفسية"
